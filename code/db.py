@@ -1,6 +1,7 @@
 
 import sqlite3
 from . import Logs
+from .args import Args
 
 class DB:
     __shared_state = {'init':False}
@@ -12,12 +13,91 @@ class DB:
             self.conn = sqlite3.connect("duplicates.db")
             self.conn.row_factory = self.dict_factory
             # self.cur = conn.cursor() # We really should just make cursors on the fly
+            self.conn.enable_load_extension(True)
+            self.conn.cursor().execute("SELECT load_extension('code/sqlite-hexhammdist.so', 'hexhammdist_init')")
             self.init = True
             self.log.info("Init the DB")
+            self.init_tables()
 
 
-    def upsert_image(self, image_dict):
-        pass
+    def upsert_image(self, image):
+        cur = self.conn.cursor()
+        cmd = """
+        INSERT OR REPLACE INTO images 
+        (   file_name,
+            height,
+            width,
+            size,
+            ahash,
+            phash,
+            dhash,
+            whash,
+            md5
+        ) VALUES (?,?,?,?,?,?,?,?,?)
+        """
+        cur.execute(cmd, 
+            (   str(image.path),
+                image.height,
+                image.width,
+                image.size,
+                str(image.ahash),
+                str(image.phash),
+                str(image.dhash),
+                str(image.whash),
+                str(image.md5)
+            )
+        )
+        self.conn.commit()
+
+
+    def get_image(self, path):
+        cur = self.conn.cursor()
+        cmd = """
+        SELECT * FROM images WHERE file_name=?
+        """
+        return cur.execute(cmd, (str(path),) ).fetchone()
+
+
+    def iter_images(self, max_row_id):
+        cur = self.conn.cursor()
+        for i in cur.execute("SELECT *,rowid FROM images WHERE removed = 0 AND rowid<=? ORDER BY rowid DESC",(max_row_id,)).fetchall():
+            yield i
+
+
+    def get_max_rowid(self):
+        cur = self.conn.cursor()
+        return cur.execute('SELECT max(rowid) as rowid FROM images').fetchone()['rowid']
+
+
+    def iter_images_hammdist(self, current_image):
+        cur = self.conn.cursor()
+        args = Args()
+        cmd = f"""
+            SELECT 
+            *, 
+            hexhammdist(ahash,'{current_image['ahash']}') as d_ahash,
+            hexhammdist(phash,'{current_image['phash']}') as d_phash,
+            hexhammdist(dhash,'{current_image['dhash']}') as d_dhash,
+            hexhammdist(whash,'{current_image['whash']}') as d_whash
+            FROM images
+            WHERE rowid < {current_image['rowid']}
+            AND removed = 0
+            AND d_ahash < {args.threshold}
+            AND d_phash < {args.threshold}
+            AND d_dhash < {args.threshold}
+            AND d_whash < {args.threshold}
+            """
+        for i in cur.execute(cmd):
+            yield i
+
+
+    def is_skipped(self, file1, file2):
+        cur = self.conn.cursor()
+        if cur.execute("SELECT * FROM skips WHERE file_name1=? AND file_name2=?", (file1, file2) ).fetchone() is not None:
+            return True
+        if cur.execute("SELECT * FROM skips WHERE file_name1=? AND file_name2=?", (file1, file2) ).fetchone() is not None:
+            return True
+        return False
 
 
     @staticmethod
@@ -65,9 +145,10 @@ class DB:
 
 
     def init_tables(self):
-        logger.info("Check to see if images exists.")
-        if not table_exists(cur, "images"):
-            logger.info("Create images table")
+        cur = self.conn.cursor()
+        self.log.info("Check to see if 'images' exists.")
+        if not self.table_exists(cur, "images"):
+            self.log.info("Create images table")
             cmd = """
                 CREATE TABLE images
                 (
@@ -84,13 +165,13 @@ class DB:
                 )
             """
             cur.execute(cmd)
-            conn.commit()
+            self.conn.commit()
         else:
-            logger.info("images exists, continue")
+            self.log.info("'images' exists, continue")
 
-        logger.info("Check to see if skips exists.")
-        if not table_exists(cur, "skips"):
-            logger.info("Create skips table")
+        self.log.info("Check to see if 'skips' exists.")
+        if not self.table_exists(cur, "skips"):
+            self.log.info("Create skips table")
             cmd = """
                 CREATE TABLE skips
                 (
@@ -100,6 +181,6 @@ class DB:
                 )
             """
             cur.execute(cmd)
-            conn.commit()
+            self.conn.commit()
         else:
-            logger.info("images exists, continue")
+            self.log.info("'skips' exists, continue")

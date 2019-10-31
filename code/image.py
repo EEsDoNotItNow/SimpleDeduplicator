@@ -5,11 +5,12 @@ import hashlib
 import imagehash
 import re
 from . import Logs
+from . import DB
 
 class Image:
 
     def __init__(self, path):
-        self.path = Path(path)
+        self.path = Path(path).expanduser().resolve()
         self.ahash = None
         self.dhash = None
         self.phash = None
@@ -21,6 +22,28 @@ class Image:
         self.removed = False
         self.parsed = False
         self.loaded = False
+
+
+    def pull_from_db(self):
+        """Attempt to pull data from the DB.
+        """
+        db = DB()
+        data = db.get_image(self.path)
+        if data is None:
+            return
+        self.ahash = imagehash.hex_to_hash(data['ahash'])
+        self.dhash = imagehash.hex_to_hash(data['dhash'])
+        self.phash = imagehash.hex_to_hash(data['phash'])
+        self.whash = imagehash.hex_to_hash(data['whash'])
+        self.md5 = data['md5']
+        self.size = data['size']
+        self.width = data['width']
+        self.height = data['height']
+        self.loaded = True
+
+
+    def upsert_to_db(self):
+        DB().upsert_image(self)
 
 
     def update_from_drive(self):
