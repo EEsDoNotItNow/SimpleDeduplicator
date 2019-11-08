@@ -15,7 +15,8 @@ class Args:
                                help='row id to start processing at, defaults to all rows')
             parser.add_argument('--threshold', metavar='N', type=int, default=5,
                                 help='All values must be <= to this value to trigger a match (Defaults to 5)')
-
+            parser.add_argument('--md5', action='store_true',
+                                help='Auto pick in cases where MD5 sums match')
             self.args = parser.parse_args()
             self.logger = Logs()
             self.logger.info(self.args)

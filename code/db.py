@@ -120,7 +120,7 @@ class DB:
         cur = self.conn.cursor()
         cur.execute("UPDATE images SET removed=1 WHERE file_name=?",(str(file_name),))
         self.conn.commit()
-        logger.info(f"File removed: {str(file_name)}")
+        self.log.info(f"File removed: {str(file_name)}")
         # time.sleep(1)
 
 

@@ -2,6 +2,7 @@ from . import DB, Logs, ImageCollection, Image, Args
 import time
 from pathlib import Path
 from PIL import Image as PILImage
+import shutil
 
 
 class Deduplicator:
@@ -26,17 +27,19 @@ class Deduplicator:
         for idx, current_image in enumerate(db.iter_images(args.rowid)):
             
             p_current = Path(current_image['file_name'])
-            if not p_current.exists():
-                mark_removed(p_current)
+            if not p_current.is_file():
+                db.mark_removed(p_current)
                 self.log.warning(f"Removed a non-existent file: {p_current}")
                 continue
-
-
             
             self.log.info(current_image['rowid'])
             # Check if current_image even exists, continue if not
             for db_image in db.iter_images_hammdist(current_image):
                 # Check if this image combo has been seen before, skip if so
+
+                if not Path(db_image['file_name']).is_file():
+                    db.mark_removed(db_image['file_name'])
+                    continue
 
                 if db.is_skipped(str(p_current), str(db_image['file_name'])):
                     self.log.info(f"Skipping per DB, file was {db_image['file_name']}")
@@ -68,9 +71,12 @@ class Deduplicator:
                 elif p_current.stat().st_size > db_image['size']:
                     self.log.info(f"Suggesting A, as it is larger ({db_image['size']} < {p_current.stat().st_size})")
                 while 1:
-                    if current_image['md5'] == db_image['md5']:
+                    if current_image['md5'] == db_image['md5'] and args.md5:
                         self.log.info("md5 is identical! Keeping A, moving B")
                         choice = 'a'
+                    elif current_image['md5'] == db_image['md5'] and  not args.md5:
+                        self.log.info("md5 is identical!")
+                        choice = input("> ").lower()
                     else:
                         choice = input("> ").lower()
 
@@ -79,7 +85,7 @@ class Deduplicator:
                         break
 
                     if choice == "s":
-                        insert_skip(p_current, p_db)
+                        db.insert_skip(p_current, p_db)
                         break
 
                     if choice == "d":
@@ -101,7 +107,7 @@ class Deduplicator:
                         file_dest = Path(file_dest.parent, file_dest.stem + "_copy" + file_dest.suffix)
                         self.log.info(f"Had to rename file to {file_dest}")
                     shutil.move(str(file_to_move), str(file_dest))
-                    mark_removed(file_to_move)
+                    db.mark_removed(file_to_move)
                     db_changed = True
                     break
         t2 = time.time()
