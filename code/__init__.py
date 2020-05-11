@@ -5,3 +5,4 @@ from .image_collection import ImageCollection
 from .image import Image
 from .deduplicator import Deduplicator
 from .importer import Importer
+from .name_fix import NameFix

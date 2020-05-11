@@ -37,7 +37,9 @@ class Deduplicator:
             for db_image in db.iter_images_hammdist(current_image):
                 # Check if this image combo has been seen before, skip if so
 
-                if not Path(db_image['file_name']).is_file():
+                p_db = Path(db_image['file_name'])
+
+                if not p_db.is_file():
                     db.mark_removed(db_image['file_name'])
                     continue
 
@@ -45,8 +47,13 @@ class Deduplicator:
                     self.log.info(f"Skipping per DB, file was {db_image['file_name']}")
                     continue
 
+
+                ts_a = p_current.stat().st_mtime
+                ts_b = p_db.stat().st_mtime
+
+                a_is_younger = ts_a < ts_b
+
                 # Ask user WTF to do (or run MD5 if needed)
-                p_db = Path(db_image['file_name'])
 
                 self.log.warning("Hashes match, show the images and quit!")
                 self.log.info("A:")
@@ -76,6 +83,7 @@ class Deduplicator:
                         choice = 'a'
                     elif current_image['md5'] == db_image['md5'] and  not args.md5:
                         self.log.info("md5 is identical!")
+                        self.log.info(f"{'A' if a_is_younger else 'B'} is younger, recommend keeping it")
                         choice = input("> ").lower()
                     else:
                         choice = input("> ").lower()
